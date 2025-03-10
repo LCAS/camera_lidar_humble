@@ -29,7 +29,7 @@ Despite the modifications, this package retains most of the original code. For a
 
 The key contribution of this adaptation is the integration with **ROS 2**. The communication flow is structured as follows:  
 
-*(Insert image or diagram here)*  
+![Pipeline of the node](readme_files/pipeline.png)
 
 ---
 
