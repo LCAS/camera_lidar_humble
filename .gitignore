@@ -1,0 +1,7 @@
+ros2_ws/dataset/
+ros2_ws/test_kitti.rviz
+ros2_ws/yolov5su.pt
+
+ros2_ws/build
+ros2_ws/install
+ros2_ws/log
