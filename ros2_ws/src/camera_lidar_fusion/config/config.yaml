@@ -1,0 +1,7 @@
+lidar_fusion:
+  ros__parameters:
+    image_subscriber: "/camera/image_raw"
+    calib_subscriber: "/camera/calibration"
+    lidar_subscriber: "/lidar/points"
+
+    image_publisher: "/camera_lidar_fusion/result"
