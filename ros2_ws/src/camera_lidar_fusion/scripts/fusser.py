@@ -7,11 +7,30 @@ from ultralytics import YOLO
 
 class Fusser(object):
 
-    def __init__(self, P, R0, V2C):
+    @staticmethod
+    def filter_outliers(distances):
+        median = np.median(distances)
+        mad = np.median(np.abs(distances - median))
+        modified_z_scores = 0.6745 * (distances - median) / mad
+
+        return distances[np.abs(modified_z_scores) < 3.5]
+
+    @staticmethod
+    def get_best_distance(distances, technique="closest"):
+        technique_map = {
+            "closest": np.min,
+            "average": np.mean,
+            "random": lambda x: x[np.random.randint(len(x))],
+            "median": np.median
+        }
+
+        return technique_map.get(technique, np.median)(distances)
+
+    def __init__(self, P, R0, V2C, model):
         self.P = P
         self.V2C = V2C
         self.R0 = R0
-        self.model = YOLO('yolov5su.pt').to(torch.device('cuda'))
+        self.model = YOLO(model).to(torch.device('cuda'))
 
     def run_obstacle_detection(self, img):
         predictions = self.model(
@@ -25,30 +44,6 @@ class Fusser(object):
             result = r.plot()
 
         return result, pred_bboxes
-
-    def rectContains(self, rect, pt, shrink_factor=0):
-        dx = (rect[2] - rect[0]) * shrink_factor
-        dy = (rect[3] - rect[1]) * shrink_factor
-
-        return (rect[0] + dx) < pt[0] < (rect[2] - dx) and \
-               (rect[1] + dy) < pt[1] < (rect[3] - dy)
-
-    def filter_outliers(self, distances):
-        median = np.median(distances)
-        mad = np.median(np.abs(distances - median))
-        modified_z_scores = 0.6745 * (distances - median) / mad
-
-        return distances[np.abs(modified_z_scores) < 3.5]
-
-    def get_best_distance(self, distances, technique="closest"):
-        technique_map = {
-            "closest": np.min,
-            "average": np.mean,
-            "random": lambda x: x[np.random.randint(len(x))],
-            "median": np.median
-        }
-
-        return technique_map.get(technique, np.median)(distances)
 
     def get_lidar_on_image_fov(self, pc_velo, img):
         trafo_matrix = np.dot(self.P, np.dot(
@@ -145,8 +140,8 @@ class Fusser(object):
                 cv2.circle(img, (x, y), 2, tuple(cmap[color_idx]), -1)
 
             if len(masked_depths) > 2:
-                filtered_distances = self.filter_outliers(masked_depths.cpu().numpy())
-                best_distance = self.get_best_distance(filtered_distances)
+                filtered_distances = Fusser.filter_outliers(masked_depths.cpu().numpy())
+                best_distance = Fusser.get_best_distance(filtered_distances)
 
                 text_x = int(box[0] + (box[2] - box[0]) / 2)
                 text_y = int(box[1] + (box[3] - box[1]) / 2)

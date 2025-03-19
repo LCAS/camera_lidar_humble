@@ -13,6 +13,33 @@ from scripts.fusser import Fusser
 
 class SensorFusionNode(Node):
 
+    @staticmethod
+    def pointcloud2numpy(points_msg):
+
+        return pc2.read_points_numpy(
+                points_msg,
+                field_names=('x', 'y', 'z'),
+                skip_nans=True)
+
+    @staticmethod
+    def unpack_calib(msg):
+
+        for line in str(msg).split(r'\n'):
+
+            if line.startswith('std_msgs'):
+                values = line.split("'")[1].split(':')[1].split()
+                P = np.array([float(val) for val in values])
+
+            elif line.startswith('R_rect'):
+                values = [val for val in line.split()]
+                R0 = np.array([float(val) for val in values[1:]])
+
+            elif line.startswith('Tr_velo_cam'):
+                values = [val for val in line.split()]
+                V2C = np.array([float(val) for val in values[1:]])
+
+        return P.reshape(3, 4), R0.reshape(3, 3), V2C.reshape(3, 4)
+
     def __init__(self):
         super().__init__('lidar_fusion')
 
@@ -49,69 +76,33 @@ class SensorFusionNode(Node):
                 1
                 )
 
+        self.declare_parameter('YOLO_model', 'yolov5su.pt')
+
+        self.model = self.get_parameter('YOLO_model').value
+
         self.bridge = CvBridge()
         self.fusser = None
 
         self.get_logger().info("Nodo lidar_fusion iniciado y escuchando...")
 
-    def _image_raw2numpy(self, image_msg):
-
-        return self.bridge.imgmsg_to_cv2(
-                image_msg,
-                desired_encoding="bgr8"
-                )
-
-    def _pointcloud2numpy(self, points_msg):
-
-        return pc2.read_points_numpy(
-                points_msg,
-                field_names=('x', 'y', 'z'),
-                skip_nans=True)
-
-    def _unpack_calib(self, msg):
-
-        if not msg:
-            return
-
-        lines = str(msg).split(r'\n')
-
-        for line in lines:
-
-            if line.startswith('std_msgs'):
-                values = line.split("'")[1].split(':')[1].split()
-                P = np.array([float(val) for val in values])
-
-            elif line.startswith('R_rect'):
-                values = [val for val in line.split()]
-                R0 = np.array([float(val) for val in values[1:]])
-
-            elif line.startswith('Tr_velo_cam'):
-                values = [val for val in line.split()]
-                V2C = np.array([float(val) for val in values[1:]])
-
-        return P.reshape(3, 4), R0.reshape(3, 3), V2C.reshape(3, 4)
-
     def calibration_callback(self, msg):
 
         if not self.fusser:
-            P, R0, V2C = self._unpack_calib(msg)
-            self.fusser = Fusser(P, R0, V2C)
+            P, R0, V2C = SensorFusionNode.unpack_calib(msg)
+            self.fusser = Fusser(P, R0, V2C, self.model)
 
     def process_data(self, image_msg, lidar_msg):
 
         if self.fusser:
 
-            img = self._image_raw2numpy(image_msg)
-            points = self._pointcloud2numpy(lidar_msg)
+            img = self.bridge.imgmsg_to_cv2(image_msg, desired_encoding='bgr8')
+            points = SensorFusionNode.pointcloud2numpy(lidar_msg)
 
-            final_result = self.fusser.pipeline(img.copy(), points)
+            final_img = self.fusser.pipeline(img.copy(), points)
 
-            result_img_msg = self.bridge.cv2_to_imgmsg(
-                    final_result,
-                    encoding='bgr8'
-                    )
+            final_img_msg = self.bridge.cv2_to_imgmsg(final_img, encoding='bgr8')
 
-            self.publisher.publish(result_img_msg)
+            self.publisher.publish(final_img_msg)
 
 
 def main(args=None):
