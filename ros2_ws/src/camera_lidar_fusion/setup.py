@@ -3,6 +3,7 @@ from glob import glob
 from setuptools import find_packages, setup
 
 package_name = 'camera_lidar_fusion'
+
 setup(
     name=package_name,
     version='0.0.1',
@@ -23,7 +24,7 @@ setup(
         'setuptools',
         'torch',
         'numpy',
-        'opencv-python'
+        'opencv-python',
         'matplotlib',
         'ultralytics',
         'sensor_msgs_py',

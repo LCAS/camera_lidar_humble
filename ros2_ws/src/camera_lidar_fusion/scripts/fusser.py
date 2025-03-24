@@ -15,8 +15,23 @@ class Fusser(object):
 
         return distances[np.abs(modified_z_scores) < 3.5]
 
-    @staticmethod
-    def get_best_distance(distances, technique="closest"):
+
+    def __init__(self, P, R0, V2C, model, technique, RF, classes):
+
+        self.P = P
+        self.V2C = V2C
+        self.R0 = R0
+
+        self.technique = technique
+        self.RF = RF
+        self.classes = classes
+
+        if torch.cuda.is_available():
+            self.model = YOLO(model).to(torch.device('cuda'))
+        else:
+            self.model = YOLO(model)
+
+    def get_best_distance(self, distances):
         technique_map = {
             "closest": np.min,
             "average": np.mean,
@@ -24,19 +39,13 @@ class Fusser(object):
             "median": np.median
         }
 
-        return technique_map.get(technique, np.median)(distances)
-
-    def __init__(self, P, R0, V2C, model):
-        self.P = P
-        self.V2C = V2C
-        self.R0 = R0
-        self.model = YOLO(model).to(torch.device('cuda'))
+        return technique_map.get(self.technique, np.mean)(distances)
 
     def run_obstacle_detection(self, img):
         predictions = self.model(
                 img,
                 conf=0.5,
-                classes=[0, 2, 7],
+                classes=self.classes,
                 verbose=False)
 
         for r in predictions:
@@ -66,7 +75,7 @@ class Fusser(object):
         self.imgfov_pc_velo = pc_velo[fov_mask]
         self.imgfov_pts_2d = pts_2d[fov_mask, :]
 
-    def lidar_camera_fusion(self, pred_bboxes, img, reduction_factor=0.9):
+    def lidar_camera_fusion(self, pred_bboxes, img):
         cmap = plt.cm.get_cmap("hsv", 256)
         cmap = cmap(np.arange(256))[:, :3] * 255
 
@@ -85,8 +94,8 @@ class Fusser(object):
             box_width = box_tensor[2] - box_tensor[0]
             box_height = box_tensor[3] - box_tensor[1]
 
-            reduced_width = box_width * reduction_factor
-            reduced_height = box_height * reduction_factor
+            reduced_width = box_width * self.RF
+            reduced_height = box_height * self.RF
 
             reduced_box = torch.tensor([
                 box_center_x - reduced_width / 2,
@@ -141,7 +150,7 @@ class Fusser(object):
 
             if len(masked_depths) > 2:
                 filtered_distances = Fusser.filter_outliers(masked_depths.cpu().numpy())
-                best_distance = Fusser.get_best_distance(filtered_distances)
+                best_distance = self.get_best_distance(filtered_distances)
 
                 text_x = int(box[0] + (box[2] - box[0]) / 2)
                 text_y = int(box[1] + (box[3] - box[1]) / 2)
@@ -159,7 +168,9 @@ class Fusser(object):
     def pipeline(self, image, point_cloud):
 
         self.get_lidar_on_image_fov(point_cloud[:, :3], image)
+
         result, pred_bboxes = self.run_obstacle_detection(image)
+
         if pred_bboxes.any():
             self.lidar_camera_fusion(pred_bboxes, result)
 

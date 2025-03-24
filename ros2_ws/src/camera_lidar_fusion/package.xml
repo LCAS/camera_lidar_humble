@@ -25,5 +25,7 @@
 
   <export>
     <build_type>ament_python</build_type>
+    <ros2launch/>
   </export>
+
 </package>
