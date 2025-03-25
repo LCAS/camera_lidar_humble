@@ -6,9 +6,15 @@ lidar_fusion:
 
     YOLO_model: "yolov5su.pt"
     technique: "average"
-    reduction_factor: 0.5
-    yolo_classes: [0]
-    # 1 - person
+    reduction_factor: 0.9
+    yolo_threshold: 0.7
+    yolo_classes: [2]
+    # 0 - person
     # 2 - car
+    bboxes_subscribers: /detection_2d/car
+    # /detection_2d/car
+    # /detection_2d/pedestrian
+    # /detection_3d/car
+    # /detection_3d/pedestrian
 
     image_publisher: "/camera_lidar_fusion/result"

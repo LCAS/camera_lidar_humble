@@ -16,7 +16,7 @@ class Fusser(object):
         return distances[np.abs(modified_z_scores) < 3.5]
 
 
-    def __init__(self, P, R0, V2C, model, technique, RF, classes):
+    def __init__(self, P, R0, V2C, model, technique, RF, classes, thresh):
 
         self.P = P
         self.V2C = V2C
@@ -25,6 +25,7 @@ class Fusser(object):
         self.technique = technique
         self.RF = RF
         self.classes = classes
+        self.thresh = thresh
 
         if torch.cuda.is_available():
             self.model = YOLO(model).to(torch.device('cuda'))
@@ -44,7 +45,7 @@ class Fusser(object):
     def run_obstacle_detection(self, img):
         predictions = self.model(
                 img,
-                conf=0.5,
+                conf=self.thresh,
                 classes=self.classes,
                 verbose=False)
 
@@ -75,20 +76,23 @@ class Fusser(object):
         self.imgfov_pc_velo = pc_velo[fov_mask]
         self.imgfov_pts_2d = pts_2d[fov_mask, :]
 
-    def lidar_camera_fusion(self, pred_bboxes, img):
+    def lidar_camera_fusion(self, pred_bboxes, img, bboxes):
         cmap = plt.cm.get_cmap("hsv", 256)
         cmap = cmap(np.arange(256))[:, :3] * 255
+
+        for bbox in bboxes:
+            x1, y1, x2, y2 = bbox
+            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
+            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
         points_2d = torch.tensor(self.imgfov_pts_2d, dtype=torch.float32).cuda()
         pc_velo = torch.tensor(self.imgfov_pc_velo, dtype=torch.float32).cuda()
 
-        # Máscara global para rastrear puntos ya utilizados
         global_mask = torch.zeros(len(points_2d), dtype=torch.bool).cuda()
 
         for box in pred_bboxes:
             box_tensor = torch.tensor(box, dtype=torch.float32).cuda()
 
-            # Expanded box with reduction factor
             box_center_x = (box_tensor[0] + box_tensor[2]) / 2
             box_center_y = (box_tensor[1] + box_tensor[3]) / 2
             box_width = box_tensor[2] - box_tensor[0]
@@ -104,14 +108,11 @@ class Fusser(object):
                 box_center_y + reduced_height / 2
             ], dtype=torch.float32).cuda()
 
-            # Vectorized point-in-box check (ahora solo para puntos no utilizados)
             available_points = ~global_mask
 
-            # Si no quedan puntos disponibles, salimos del bucle
             if not torch.any(available_points):
                 break
 
-            # Filtramos solo los puntos disponibles
             available_points_2d = points_2d[available_points]
 
             x_check = torch.logical_and(
@@ -127,13 +128,10 @@ class Fusser(object):
             if not torch.any(box_mask):
                 continue
 
-            # Obtenemos los índices originales de los puntos seleccionados
             original_indices = torch.nonzero(available_points).squeeze()[box_mask]
 
-            # Marcamos estos puntos como utilizados en la máscara global
             global_mask[original_indices] = True
 
-            # Obtenemos los puntos y profundidades
             selected_points = points_2d[original_indices]
             masked_depths = pc_velo[original_indices, 0]
 
@@ -165,13 +163,21 @@ class Fusser(object):
                     cv2.LINE_AA
                 )
 
-    def pipeline(self, image, point_cloud):
+    def pipeline(self, image, point_cloud, bboxes):
 
         self.get_lidar_on_image_fov(point_cloud[:, :3], image)
 
         result, pred_bboxes = self.run_obstacle_detection(image)
 
+        print("YOLO")
+        print(type(pred_bboxes))
+        print(pred_bboxes)
+        print()
+        print("KITTY")
+        print(type(bboxes))
+        print(bboxes)
+
         if pred_bboxes.any():
-            self.lidar_camera_fusion(pred_bboxes, result)
+            self.lidar_camera_fusion(pred_bboxes, result, bboxes)
 
         return result

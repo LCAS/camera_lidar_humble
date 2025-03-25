@@ -9,6 +9,7 @@ import numpy as np
 from sensor_msgs_py import point_cloud2 as pc2
 
 from scripts.fusser import Fusser
+from my_msgs.msg import Float32MultiArrayStamped as F32M
 
 
 class SensorFusionNode(Node):
@@ -25,6 +26,7 @@ class SensorFusionNode(Node):
         self.declare_parameter('technique', 'average')
         self.declare_parameter('reduction_factor', 0.9)
         self.declare_parameter('yolo_classes', [0, 2])
+        self.declare_parameter('yolo_threshold', 0.8)
 
         image_sub = self.get_parameter('image_subscriber').value
         calib_sub = self.get_parameter('calib_subscriber').value
@@ -34,13 +36,18 @@ class SensorFusionNode(Node):
         self.technique = self.get_parameter('technique').value
         self.RF = self.get_parameter('reduction_factor').value
         self.classes = self.get_parameter('yolo_classes').value
+        self.yolo_threshold = self.get_parameter('yolo_threshold').value
 
         self.create_subscription(String, calib_sub, self._calib_callback, 1)
+
+        self.declare_parameter('bboxes_subscribers', '/detection_3d/car')
+        boxes_sub = self.get_parameter('bboxes_subscribers').value
 
         ts = TimeSynchronizer(
                 [
                     Subscriber(self, Image, image_sub),
-                    Subscriber(self, PointCloud2, lidar_sub)
+                    Subscriber(self, PointCloud2, lidar_sub),
+                    Subscriber(self, F32M, boxes_sub)
                     ],
                 10)
 
@@ -50,6 +57,7 @@ class SensorFusionNode(Node):
 
         self.bridge = CvBridge()
         self.fusser = None
+
 
         self.get_logger().info("Nodo lidar_fusion iniciado y escuchando...")
 
@@ -79,9 +87,10 @@ class SensorFusionNode(Node):
                 self.model,
                 self.technique,
                 self.RF,
-                self.classes)
+                self.classes,
+                self.yolo_threshold)
 
-    def _main_pipeline(self, image_msg, lidar_msg):
+    def _main_pipeline(self, image_msg, lidar_msg, boxes_msg):
 
         if self.fusser:
 
@@ -94,7 +103,18 @@ class SensorFusionNode(Node):
                 field_names=('x', 'y', 'z'),
                 skip_nans=True)
 
-            final_img = self.fusser.pipeline(img.copy(), points)
+            bboxes_arr = np.array(boxes_msg.data, dtype=np.float32)
+            n_objs = len(bboxes_arr) // 6
+
+            if n_objs > 0:
+
+                data_reshaped = bboxes_arr[:n_objs*6].reshape(n_objs, 6)
+                bboxes = data_reshaped[:, 1:5]
+
+            else:
+                bboxes = np.empty((0, 4), dtype=np.float32)
+
+            final_img = self.fusser.pipeline(img.copy(), points, bboxes)
 
             final_img_msg = self.bridge.cv2_to_imgmsg(
                 final_img,
