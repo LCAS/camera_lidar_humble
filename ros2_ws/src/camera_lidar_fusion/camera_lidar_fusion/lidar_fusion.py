@@ -7,6 +7,7 @@ from message_filters import Subscriber, TimeSynchronizer
 from cv_bridge import CvBridge
 import numpy as np
 from sensor_msgs_py import point_cloud2 as pc2
+import csv
 
 from scripts.fusser import Fusser
 from my_msgs.msg import Float32MultiArrayStamped as F32M
@@ -22,32 +23,36 @@ class SensorFusionNode(Node):
         self.declare_parameter('calib_subscriber', '/camera/calibration')
         self.declare_parameter('lidar_subscriber', '/lidar/points')
         self.declare_parameter('image_publisher', '/lidar_fusion/result')
+        self.declare_parameter('image_fov_publisher', '/lidar_fusion/fov')
         self.declare_parameter('YOLO_model', 'yolov5su.pt')
         self.declare_parameter('technique', 'average')
         self.declare_parameter('reduction_factor', 0.9)
         self.declare_parameter('yolo_classes', [0, 2])
         self.declare_parameter('yolo_threshold', 0.8)
+        self.declare_parameter('ped_bboxes_subscribers', '/detection_2d/pedestrian')
+        self.declare_parameter('car_bboxes_subscribers', '/detection_2d/car')
 
         image_sub = self.get_parameter('image_subscriber').value
         calib_sub = self.get_parameter('calib_subscriber').value
         lidar_sub = self.get_parameter('lidar_subscriber').value
         image_pub = self.get_parameter('image_publisher').value
+        image_lidar_pub = self.get_parameter('image_fov_publisher').value
         self.model = self.get_parameter('YOLO_model').value
         self.technique = self.get_parameter('technique').value
         self.RF = self.get_parameter('reduction_factor').value
         self.classes = self.get_parameter('yolo_classes').value
         self.yolo_threshold = self.get_parameter('yolo_threshold').value
+        ped_boxes_sub = self.get_parameter('ped_bboxes_subscribers').value
+        car_boxes_sub = self.get_parameter('car_bboxes_subscribers').value
 
         self.create_subscription(String, calib_sub, self._calib_callback, 1)
-
-        self.declare_parameter('bboxes_subscribers', '/detection_3d/car')
-        boxes_sub = self.get_parameter('bboxes_subscribers').value
 
         ts = TimeSynchronizer(
                 [
                     Subscriber(self, Image, image_sub),
                     Subscriber(self, PointCloud2, lidar_sub),
-                    Subscriber(self, F32M, boxes_sub)
+                    Subscriber(self, F32M, ped_boxes_sub),
+                    Subscriber(self, F32M, car_boxes_sub)
                     ],
                 10)
 
@@ -90,35 +95,56 @@ class SensorFusionNode(Node):
                 self.classes,
                 self.yolo_threshold)
 
-    def _main_pipeline(self, image_msg, lidar_msg, boxes_msg):
+    def _imgmsg2np(self, img_msg):
+        return self.bridge.imgmsg_to_cv2(
+                img_msg,
+                desired_encoding='bgr8'
+                )
 
-        if self.fusser:
+    def _np2imgmsg(self, arr):
+        return self.bridge.cv2_to_imgmsg(
+                arr,
+                encoding='bgr8'
+                )
 
-            img = self.bridge.imgmsg_to_cv2(
-                image_msg,
-                desired_encoding='bgr8')
-
-            points = pc2.read_points_numpy(
+    def _lidarmsg2np(self, lidar_msg):
+        return pc2.read_points_numpy(
                 lidar_msg,
                 field_names=('x', 'y', 'z'),
                 skip_nans=True)
 
-            bboxes_arr = np.array(boxes_msg.data, dtype=np.float32)
-            n_objs = len(bboxes_arr) // 6
+    def _get_frame(self, ped_boxes_msg, car_boxes_msg):
+            ped_bboxes = np.array(ped_boxes_msg.data, dtype=np.float32)
+            car_bboxes = np.array(car_boxes_msg.data, dtype=np.float32)
 
-            if n_objs > 0:
+            n_ped = len(ped_bboxes) // 6
+            n_car = len(car_bboxes) // 6
 
-                data_reshaped = bboxes_arr[:n_objs*6].reshape(n_objs, 6)
-                bboxes = data_reshaped[:, 1:5]
+            if n_ped or n_car > 0:
+
+                bboxes = np.append(ped_bboxes, car_bboxes)
+                return bboxes[0]
 
             else:
-                bboxes = np.empty((0, 4), dtype=np.float32)
+                return None
 
-            final_img = self.fusser.pipeline(img.copy(), points, bboxes)
 
-            final_img_msg = self.bridge.cv2_to_imgmsg(
-                final_img,
-                encoding='bgr8')
+    def _main_pipeline(self, image_msg, lidar_msg, ped_boxes_msg, car_boxes_msg):
+
+        if self.fusser:
+
+            img = self._imgmsg2np(image_msg)
+
+            points = self._lidarmsg2np(lidar_msg)
+            
+            frame = self._get_frame(ped_boxes_msg, car_boxes_msg)
+
+            _, final_img = self.fusser.pipeline(
+                    img.copy(),
+                    points,
+                    frame)
+
+            final_img_msg = self._np2imgmsg(final_img)
 
             self.publisher.publish(final_img_msg)
 

@@ -3,18 +3,20 @@ lidar_fusion:
     image_subscriber: "/camera/image_raw"
     calib_subscriber: "/camera/calibration"
     lidar_subscriber: "/lidar/points"
+    image_publisher: "/camera_lidar_fusion/result"
+    image_fov_publisher: "/camera_lidar_fusion/lidar_fov"
 
     YOLO_model: "yolov5su.pt"
     technique: "average"
     reduction_factor: 0.9
-    yolo_threshold: 0.7
-    yolo_classes: [2]
+    yolo_classes: [0, 2]
+    yolo_threshold: 0.1
     # 0 - person
     # 2 - car
-    bboxes_subscribers: /detection_2d/car
+    ped_bboxes_subscribers: /detection_2d/pedestrian
+    car_bboxes_subscribers: /detection_2d/car
     # /detection_2d/car
     # /detection_2d/pedestrian
     # /detection_3d/car
     # /detection_3d/pedestrian
 
-    image_publisher: "/camera_lidar_fusion/result"

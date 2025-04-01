@@ -4,17 +4,10 @@ import cv2
 import matplotlib.pyplot as plt
 from ultralytics import YOLO
 
+import csv
+
 
 class Fusser(object):
-
-    @staticmethod
-    def filter_outliers(distances):
-        median = np.median(distances)
-        mad = np.median(np.abs(distances - median))
-        modified_z_scores = 0.6745 * (distances - median) / mad
-
-        return distances[np.abs(modified_z_scores) < 3.5]
-
 
     def __init__(self, P, R0, V2C, model, technique, RF, classes, thresh):
 
@@ -32,6 +25,13 @@ class Fusser(object):
         else:
             self.model = YOLO(model)
 
+    def filter_outliers(distances):
+        median = np.median(distances)
+        mad = np.median(np.abs(distances - median))
+        modified_z_scores = 0.6745 * (distances - median) / mad
+
+        return distances[np.abs(modified_z_scores) < 3.5]
+
     def get_best_distance(self, distances):
         technique_map = {
             "closest": np.min,
@@ -42,15 +42,29 @@ class Fusser(object):
 
         return technique_map.get(self.technique, np.mean)(distances)
 
-    def run_obstacle_detection(self, img):
+    def run_obstacle_detection(self, img, frame):
+
+
         predictions = self.model(
                 img,
                 conf=self.thresh,
                 classes=self.classes,
                 verbose=False)
 
+        csv_file = '/home/user/pred_bboxes.csv'
+
         for r in predictions:
             pred_bboxes = (r.boxes.data).detach().cpu().numpy()
+
+            if frame:
+
+                with open(csv_file, mode='a',newline='') as file:
+                    writer = csv.writer(file)
+                    
+                    for bbox in pred_bboxes:
+                        x1, y1, x2, y2, conf, class_id = bbox
+                        writer.writerow([frame, int(class_id), conf, x1, y1, x2, y2])
+
             result = r.plot()
 
         return result, pred_bboxes
@@ -76,14 +90,28 @@ class Fusser(object):
         self.imgfov_pc_velo = pc_velo[fov_mask]
         self.imgfov_pts_2d = pts_2d[fov_mask, :]
 
-    def lidar_camera_fusion(self, pred_bboxes, img, bboxes):
+        cmap = plt.cm.get_cmap("hsv", 256)
+        cmap = np.array([cmap(i) for i in range(256)])[:, :3] * 255
+
+        img2 = img.copy()
+        
+        for i in range(self.imgfov_pts_2d.shape[0]):
+            depth = self.imgfov_pc_velo[i,0]
+            color = cmap[int(510.0 / depth), :]
+            cv2.circle(
+                img2,
+                (int(np.round(self.imgfov_pts_2d[i, 0])), int(np.round(self.imgfov_pts_2d[i, 1]))),
+                2,
+                color=tuple(color),
+                thickness=-1,
+            )
+
+        return img2
+
+    def lidar_camera_fusion(self, pred_bboxes, img):
         cmap = plt.cm.get_cmap("hsv", 256)
         cmap = cmap(np.arange(256))[:, :3] * 255
 
-        for bbox in bboxes:
-            x1, y1, x2, y2 = bbox
-            x1, y1, x2, y2 = int(x1), int(y1), int(x2), int(y2)
-            cv2.rectangle(img, (x1, y1), (x2, y2), (0, 255, 0), 2)
 
         points_2d = torch.tensor(self.imgfov_pts_2d, dtype=torch.float32).cuda()
         pc_velo = torch.tensor(self.imgfov_pc_velo, dtype=torch.float32).cuda()
@@ -147,7 +175,7 @@ class Fusser(object):
                 cv2.circle(img, (x, y), 2, tuple(cmap[color_idx]), -1)
 
             if len(masked_depths) > 2:
-                filtered_distances = Fusser.filter_outliers(masked_depths.cpu().numpy())
+                filtered_distances = self.filter_outliers(masked_depths.cpu().numpy())
                 best_distance = self.get_best_distance(filtered_distances)
 
                 text_x = int(box[0] + (box[2] - box[0]) / 2)
@@ -163,21 +191,13 @@ class Fusser(object):
                     cv2.LINE_AA
                 )
 
-    def pipeline(self, image, point_cloud, bboxes):
+    def pipeline(self, image, point_cloud, frame):
 
-        self.get_lidar_on_image_fov(point_cloud[:, :3], image)
+        lidar_fov_image = self.get_lidar_on_image_fov(point_cloud[:, :3], image)
 
-        result, pred_bboxes = self.run_obstacle_detection(image)
-
-        print("YOLO")
-        print(type(pred_bboxes))
-        print(pred_bboxes)
-        print()
-        print("KITTY")
-        print(type(bboxes))
-        print(bboxes)
+        result, pred_bboxes = self.run_obstacle_detection(image, frame)
 
         if pred_bboxes.any():
-            self.lidar_camera_fusion(pred_bboxes, result, bboxes)
+            self.lidar_camera_fusion(pred_bboxes, result)
 
-        return result
+        return lidar_fov_image, result
