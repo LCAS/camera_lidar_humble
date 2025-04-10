@@ -1,22 +1,21 @@
 lidar_fusion:
   ros__parameters:
-    image_subscriber: "/camera/image_raw"
-    calib_subscriber: "/camera/calibration"
-    lidar_subscriber: "/lidar/points"
-    image_publisher: "/camera_lidar_fusion/result"
-    image_fov_publisher: "/camera_lidar_fusion/lidar_fov"
+    image_sub_topic: "/camera/image_raw"
+    calib_sub_topic: "/camera/calibration"
+    lidar_sub_topic: "/lidar/points"
+
+    result_pub_topic: "/camera_lidar_fusion/result"
+    bboxes_pub_topic: "/camera_lidar_fusion/pred_bboxes"
+    
 
     YOLO_model: "yolov5su.pt"
-    technique: "average"
+    distance_technique: "median"
     reduction_factor: 0.9
     yolo_classes: [0, 2]
-    yolo_threshold: 0.1
     # 0 - person
     # 2 - car
-    ped_bboxes_subscribers: /detection_2d/pedestrian
-    car_bboxes_subscribers: /detection_2d/car
-    # /detection_2d/car
-    # /detection_2d/pedestrian
-    # /detection_3d/car
-    # /detection_3d/pedestrian
+    yolo_threshold: 0.1
 
+    draw_points: False
+    draw_bboxes: True
+    write_distance: True
