@@ -9,13 +9,13 @@ lidar_fusion:
     
 
     YOLO_model: "yolov5su.pt"
-    distance_technique: "median"
-    reduction_factor: 0.9
+    reduction_factor: 0.8
     yolo_classes: [0, 2]
-    # 0 - person
-    # 2 - car
     yolo_threshold: 0.1
 
-    draw_points: False
+    draw_points: True
     draw_bboxes: True
     write_distance: True
+
+    total_rings: 64
+    rings_to_use: 8

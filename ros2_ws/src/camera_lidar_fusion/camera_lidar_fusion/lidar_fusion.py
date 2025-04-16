@@ -12,6 +12,8 @@ from sensor_msgs_py import point_cloud2 as pc2
 
 from scripts.fusser import Fusser
 
+from my_msgs.msg import LabelStamped
+
 
 class SensorFusionNode(Node):
 
@@ -33,6 +35,7 @@ class SensorFusionNode(Node):
                 [
                     Subscriber(self, Image, image_sub_topic),
                     Subscriber(self, PointCloud2, lidar_sub_topic),
+                    Subscriber(self, LabelStamped, '/training/label_2'),
                     ],
                 10)
 
@@ -49,7 +52,6 @@ class SensorFusionNode(Node):
 
         # Early fussion parameters
         self.declare_parameter('YOLO_model', 'yolov5su.pt')
-        self.declare_parameter('distance_technique', 'average')
         self.declare_parameter('reduction_factor', 0.9)
         self.declare_parameter('yolo_classes', [0, 2])
         self.declare_parameter('yolo_threshold', 0.8)
@@ -60,8 +62,24 @@ class SensorFusionNode(Node):
         # Node tools
         self.bridge = CvBridge()
         self.fusser = None
+        self.declare_parameter('total_rings', 64)
+        self.declare_parameter('rings_to_use', 64)
+        self.total_rings = self.get_parameter('total_rings').value
+        self.rings_to_use = self.get_parameter('rings_to_use').value
+        self.ring_step = self.total_rings // self.rings_to_use
+
+        self.ground_f = open('/home/user/camera_lidar_humble/results/ground_labels.txt', 'w')
+        self.pred_f = open('/home/user/camera_lidar_humble/results/pred_labels.txt', 'w')
+        self.time_f = open('/home/user/camera_lidar_humble/results/inference_time.txt', 'w')
+
+        self.frame = 0
+        self.create_subscription(String, '/finish/signal', self._finish, 1)
 
         self.get_logger().info("lidar_fusion node listening...")
+
+    def _finish(self, msg):
+        self.destroy_node()
+        rclpy.shutdown()
 
     def _calib_callback(self, msg):
 
@@ -86,7 +104,6 @@ class SensorFusionNode(Node):
             self.fusser = Fusser(
                 P, R0, V2C,
                 self.get_parameter('YOLO_model').value,
-                self.get_parameter('distance_technique').value,
                 self.get_parameter('reduction_factor').value,
                 self.get_parameter('yolo_classes').value,
                 self.get_parameter('yolo_threshold').value,
@@ -108,10 +125,18 @@ class SensorFusionNode(Node):
                 )
 
     def _lidarmsg2np(self, lidar_msg):
-        return pc2.read_points_numpy(
+        points = pc2.read_points_numpy(
                 lidar_msg,
-                field_names=('x', 'y', 'z'),
-                skip_nans=True)
+                field_names='xyz',
+                skip_nans=True
+                )
+    
+        points_per_ring = points.shape[0] // self.total_rings
+        points = points[:points_per_ring*self.total_rings]
+        points = points.reshape(self.total_rings, points_per_ring, 3)
+        points = points[::self.ring_step][:][:]
+
+        return points.reshape(self.rings_to_use*points_per_ring, 3)
 
     def _np2String(self, arr):
         arr_string = np.array2string(arr)
@@ -119,7 +144,16 @@ class SensorFusionNode(Node):
         msg.data = arr_string
         return msg
 
-    def _main_pipeline(self, image_msg, lidar_msg):
+    def write_labels(self, ground, pred, inf_time):
+
+        self.pred_f.write(f'{str(self.frame)}\n')
+        np.savetxt(self.pred_f, pred, fmt='%.4f')
+        self.pred_f.write('\n')
+        self.ground_f.write(f'{self.frame}\n{ground}\n\n')
+        self.time_f.write(f'{inf_time}\n')
+        self.get_logger().info("Data wrote")
+
+    def _main_pipeline(self, image_msg, lidar_msg, ground_bboxes):
 
         if self.fusser:
 
@@ -130,6 +164,9 @@ class SensorFusionNode(Node):
             predictions, final_img = self.fusser.pipeline(
                     img,
                     points)
+            spend = time() - start
+
+            self.write_labels(ground_bboxes.data, predictions, spend)
 
             final_img_msg = self._np2imgmsg(final_img)
             predictions_msg = self._np2String(predictions)
@@ -137,7 +174,14 @@ class SensorFusionNode(Node):
             self.final_publisher.publish(final_img_msg)
             self.bboxes_publisher.publish(predictions_msg)
 
-            self.get_logger().info(f'{predictions.shape[0]} objects detected in {time()- start: .4f} secs')
+            self.get_logger().info(f'{len(predictions)} objects detected in {spend: .4f} secs')
+            self.frame += 1
+
+    def destroy_node(self):
+        self.ground_f.close()
+        self.pred_f.close()
+        self.get_logger().info("Saving and destroying node")
+        return super().destroy_node()
 
 
 def main(args=None):
