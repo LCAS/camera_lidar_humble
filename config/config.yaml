@@ -1,0 +1,21 @@
+lidar_fusion:
+  ros__parameters:
+    image_sub_topic: "/camera/image_raw"
+    calib_sub_topic: "/camera/calibration"
+    lidar_sub_topic: "/lidar/points"
+
+    result_pub_topic: "/camera_lidar_fusion/result"
+    bboxes_pub_topic: "/camera_lidar_fusion/pred_bboxes"
+    
+
+    YOLO_model: "yolov5su.pt"
+    reduction_factor: 0.8
+    yolo_classes: [0, 2]
+    yolo_threshold: 0.1
+
+    draw_points: True
+    draw_bboxes: True
+    write_distance: True
+
+    total_rings: 64
+    rings_to_use: 8
