@@ -46,11 +46,21 @@ This node has a launch file which loads the configuration params from a `config.
 - `total_rings`: Many LiDARs don't publish the number of rings. Here you have to specify how many rings your LiDAR has.
 - `rings_to_use`: Since you would like to reduce the computational work or try with different conditions, here you have to specify how many rings should the algorithm use.
 
+---
+
+## **NOTES**
+
+Ensure that the necessary camera and LiDAR topics are active before launching the node.  
+
+---
+
 ## **Requisites**
 
 - **UBUNTU 22.04**
 - **CUDA capable GPU and CUDA drivers**
 - **ROS2 Humble Hawksbill**
+
+---
 
 ## **Installation and usage**
 
@@ -82,8 +92,6 @@ To set up and launch this package, follow these steps:
    ```bash
    ros2 launch camera_lidar_fusion launch.py
    ```
-
-Ensure that the necessary camera and LiDAR topics are active before launching the node.  
 
 ---
 
