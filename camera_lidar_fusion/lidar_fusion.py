@@ -19,8 +19,8 @@ This ROS 2 node subscribes to synchronized camera images and LiDAR point clouds,
 fuses them using a YOLO-based early fusion approach, and publishes the
 detection results and annotated images.
 
-Author: Ernesto Roque: LCAS GROUP, University of Lincoln
-License: Apache License 2.0
+Author: LCAS GROUP, University of Lincoln
+License: GLWTS
 """
 
 from time import time
