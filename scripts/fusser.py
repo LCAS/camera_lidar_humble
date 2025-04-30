@@ -1,10 +1,10 @@
-# Copyright 2025 Ernesto Roque: LCAS GROUP, University of Lincoln
+# Copyright 2025 LCAS GROUP, University of Lincoln
 #
-# Licensed under the Apache License, Version 2.0 (the "License");
+# Licensed under the GLWTS  (the "License");
 # you may not use this file except in compliance with the License.
 # You may obtain a copy of the License at
 #
-#     http://www.apache.org/licenses/LICENSE-2.0
+#       https://github.com/me-shaon/GLWTPL/tree/master
 #
 # Unless required by applicable law or agreed to in writing, software
 # distributed under the License is distributed on an "AS IS" BASIS,
@@ -18,8 +18,8 @@ Fusser: Camera-LiDAR Early Fusion Module
 This module implements the early fusion of 2D object detections (YOLO)
 with 3D LiDAR points, allowing the assignment of 3D coordinates to detected objects.
 
-Author: Ernesto Roque: LCAS GROUP, University of Lincoln
-License: Apache License 2.0
+Author: LCAS GROUP, University of Lincoln
+License: GLWTS
 """
 
 import torch

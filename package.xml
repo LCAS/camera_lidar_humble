@@ -4,8 +4,8 @@
   <name>camera_lidar_fusion</name>
   <version>0.0.1</version>
   <description>Adaptation of the https://github.com/Vishalkagade/Camera-Lidar-Sensor-Fusion repository to a ROS2 Humble package</description>
-  <maintainer email="ernestoroque777@gmail.com">user</maintainer>
-  <license>Apache-2.0</license>
+  <maintainer email="somebody@example.com">user</maintainer>
+  <license>GLWTS</license>
 
   <depend>rclpy</depend>
   <depend>std_msgs</depend>

@@ -34,9 +34,9 @@ setup(
     },
     zip_safe=True,
     maintainer='user',
-    maintainer_email='ernestoroque777@gmail.com',
+    maintainer_email="somebody@example.com",
     description='Adaptation of the https://github.com/Vishalkagade/Camera-Lidar-Sensor-Fusion repository to a ROS2 Humble package',
-    license='Apache-2.0',
+    license='GLWTS',
     entry_points={
         'console_scripts': [
             'lidar_fusion = camera_lidar_fusion.lidar_fusion:main',
